@@ -106,7 +106,7 @@ workflows:
           filters:
             branches:
               only: 
-                - disabled #still not enabled
+                - develop
       - build-deploy-prod:
           context: slack-secrets
           filters:
