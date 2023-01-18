@@ -1,0 +1,121 @@
+version: 2.1
+orbs:
+  node: circleci/node@5.0.3
+  slack: circleci/slack@4.12.0
+jobs:
+  
+  build-only:
+    machine: true
+    resource_class: organisation/runner-01
+    steps:
+      - checkout
+      - node/install:
+          node-version: '18.50.0'
+      - node/install-packages:
+          pkg-manager: npm
+          override-ci-command: npm install
+      - run: npm --version
+      - run: node --version
+      - run:
+          name: Run tests
+          command: npm test
+      - slack/notify:
+          channel: circleCI
+          event: fail
+          template: basic_fail_1
+      - slack/notify:
+          channel: circleCI
+          event: pass
+          template: basic_success_1
+  build-deploy-prod:
+    machine: true
+    resource_class: organisation/runner-01
+    steps:
+      - checkout
+      - node/install:
+          node-version: '18.50.0'
+      - node/install-packages:
+          pkg-manager: npm
+          override-ci-command: npm install
+      - run: npm --version
+      - run: node --version
+      - run:
+          name: Run tests
+          command: npm test
+      #deploy
+      - run:
+          name: add to production server to known hosts
+          command: |
+            sudo ssh-keyscan -H 172.1.1.1 >> ~/.ssh/known_hosts
+      - run: ls
+      - run:
+          name: Deploy using rsync
+          command: rsync -avz --exclude '.git' --exclude 'public' --exclude 'env' --delete -e "ssh" ./ ubuntu@172.1.1.1:/var/nodejs
+      - run:
+          name: Refresh pm2
+          command: ssh ubuntu@172.1.1.1 "pm2 restart production"
+      - slack/notify:
+          event: fail
+          template: basic_fail_1
+      - slack/notify:
+          event: pass
+          template: basic_success_1
+      - slack/notify:
+          event: pass
+          template: success_tagged_deploy_1
+  build-deploy-staging:
+    machine: true
+    resource_class: organisation/runner-01
+    steps:
+      - checkout
+      - run: ls
+      - node/install:
+          node-version: '18.50.0'
+      - node/install-packages:
+          pkg-manager: npm
+          override-ci-command: npm install
+      - run: npm --version
+      - run: node --version
+      - run:
+          name: Run tests
+          command: npm test
+      - run: 
+          name: Show files
+          command: ls
+      - run:
+          name: add to production server to known hosts
+          command: |
+            sudo ssh-keyscan -H 172.1.1.1 >> ~/.ssh/known_hosts
+      - run:
+          name: Deploy using rsync
+          command: rsync -avz --exclude  '.git' --exclude 'public' --exclude 'env' --delete -e "ssh" ./ ubuntu@172.1.1.1:/srv/nodejs/staging
+      - run:
+          name: Refresh pm2
+          command: ssh ubuntu@172.1.1.1 "pm2 restart staging"
+      - slack/notify:
+          event: fail
+          template: basic_fail_1
+      - slack/notify:
+          event: pass
+          template: basic_success_1
+workflows:
+  build-workflow:
+    jobs:
+      - build-only:
+          context: slack-secrets
+          filters:
+            branches:
+              only: 
+                - disabled #still not enabled
+      - build-deploy-prod:
+          context: slack-secrets
+          filters:
+            branches:
+              only: master
+      - build-deploy-staging:
+          context: slack-secrets
+          filters:
+            branches:
+              only: staging
+
+# VS Code Extension Version: 1.5.0
